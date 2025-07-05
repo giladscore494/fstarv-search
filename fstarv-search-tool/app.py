@@ -112,6 +112,13 @@ positions = sorted(players["Pos"].dropna().unique())
 selected_position = st.selectbox("בחר עמדה", positions)
 filtered = players[players["Pos"] == selected_position]
 
+age_range = st.slider("🎂 סינון לפי גיל", 16, 40, (16, 40))
+filtered = filtered[(filtered["Age"] >= age_range[0]) & (filtered["Age"] <= age_range[1])]
+
+if "xG" in players.columns:
+    xg_range = st.slider("⚽️ סינון לפי xG צפוי", 0.0, 25.0, (0.0, 25.0))
+    filtered = filtered[(filtered["xG"] >= xg_range[0]) & (filtered["xG"] <= xg_range[1])]
+
 if selected_position == "GK":
     clr_range = st.slider("📊 סינון: הרחקות (Clr)", 0, 100, (0, 100))
     tkl_range = st.slider("📊 תיקולים (Tkl)", 0, 50, (0, 50))
@@ -139,10 +146,15 @@ for idx, row in filtered.iterrows():
     link = generate_transfermarkt_link(row["Player"])
     st.markdown(f"🔗 [עמוד Transfermarkt של {row['Player']}]({link})")
 
-    market_value = st.number_input(f"💶 הזן שווי שוק נוכחי ב-מיליון אירו עבור {row['Player']}", min_value=0.0, step=0.1, format="%.2f")
+    market_value = st.number_input(f"💶 הזן שווי שוק נוכחי ב-מיליון אירו עבור {row['Player']}", key=f"mv_{idx}", min_value=0.0, step=0.1, format="%.2f")
     if market_value > 0:
         future_value = (row["YSP"] / 100) * 100
-        roi = ((future_value - market_value) / market_value) * 100
-        st.markdown(f"📈 ROI: {roi:.2f}% — החזר צפוי לפי פוטנציאל לעומת שווי נוכחי")
+        if future_value > market_value:
+            roi_text = "פוטנציאל גבוה משמעותית לעומת השווי הנוכחי"
+        elif future_value == market_value:
+            roi_text = "שווי השחקן תואם את הפוטנציאל הנוכחי"
+        else:
+            roi_text = "השווי הנוכחי גבוה מהפוטנציאל - סיכון השקעה"
+        st.markdown(f"📈 ROI: {roi_text}")
 
     st.markdown("---")
