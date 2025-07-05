@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -127,7 +126,6 @@ filtered = players[
 
 st.markdown(f"### נמצאו {len(filtered)} שחקנים מתאימים")
 
-# טבלת תצוגה עם שווי שוק ידני + ROI
 roi_results = []
 
 for idx, row in filtered.iterrows():
@@ -135,24 +133,22 @@ for idx, row in filtered.iterrows():
     col1.markdown(f"**{row['Player']}** ({int(row['Age'])}) – {row['Pos']}")
     col2.markdown(f"YSP: `{row['YSP']}` | תרומה/90: `{row['Contribution90']:.2f}`")
 
-    market_input = st.text_input(f"שווי שוק (€) עבור {row['Player']}", key=f"mv_{idx}")
+    market_input = st.text_input(f"שווי שוק נוכחי (€ - מלא, לדוגמה 5000000) עבור {row['Player']}", key=f"mv_{idx}")
     if market_input:
         try:
             market_clean = market_input.lower().replace("m", "000000").replace("מיליון", "000000").replace("€", "").replace(",", "").strip()
             market_value = float(market_clean)
-            roi = row['YSP'] / (market_value / 1e6)
+            roi = (row['YSP'] / market_value) * 1_000_000
             col3.success(f"ROI: {roi:.2f}")
             roi_results.append((row['Player'], row['YSP'], row['Contribution90'], roi))
         except:
             col3.warning("הזן ערך מספרי תקין (למשל 8000000)")
 
-# גרף השוואה
 if roi_results:
     st.markdown("### 📊 גרף השוואה בין שחקנים")
     chart_df = pd.DataFrame(roi_results, columns=["Player", "YSP", "Contribution90", "ROI"])
     st.bar_chart(chart_df.set_index("Player")[["YSP", "Contribution90", "ROI"]])
 
-# כפתור הורדת CSV
 if not filtered.empty:
     csv_data = filtered[["Player", "Age", "Pos", "Comp", "Gls", "Ast", "Succ", "KP", "Contribution90", "YSP"]].copy()
     st.download_button("📥 הורד CSV עם תוצאות", csv_data.to_csv(index=False).encode("utf-8"), file_name="filtered_players.csv", mime="text/csv")
