@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
 import os
+import urllib.parse
 
-st.set_page_config(page_title="FstarVfootball ROI Tool", layout="wide")
-st.title("💹 מחשבון ROI לשחקנים – FstarVfootball")
+st.set_page_config(page_title="FstarVfootball - ROI חכם", layout="wide")
 
+# ----- טען נתונים -----
 @st.cache_data
 def load_players():
     path = os.path.join("data", "players_simplified_2025.csv")
@@ -100,21 +101,56 @@ def calculate_ysp_score(row):
     ysp_score *= league_weight
     return min(round(ysp_score, 2), 100)
 
-df = load_players()
-player_names = df["Player"].unique()
-selected_player = st.selectbox("בחר שחקן לחישוב ROI", player_names)
+# ----- ממשק -----
+st.title("🔍 חיפוש מתקדם לשחקני כדורגל + ROI")
+players = load_players()
 
-player_data = df[df["Player"] == selected_player].iloc[0]
-ysp_score = calculate_ysp_score(player_data)
+# אפשרות סינון לפי גיל, xG, עמדה וכו'
+st.sidebar.header("סינון מתקדם")
+position_filter = st.sidebar.selectbox("בחר עמדה", options=["ALL"] + sorted(players["Pos"].unique()))
+age_max = st.sidebar.slider("גיל מרבי", 16, 28, 23)
+xg_min = st.sidebar.slider("מינימום xG", 0.0, 10.0, 3.0, step=0.1)
+dribble_min = st.sidebar.slider("מינימום דריבלים", 0, 100, 20)
+keypass_min = st.sidebar.slider("מינימום מסירות מפתח", 0, 100, 20)
 
-st.write(f"**מדד YSP לשחקן {selected_player}**: {ysp_score}")
+filtered = players.copy()
+if position_filter != "ALL":
+    filtered = filtered[filtered["Pos"] == position_filter]
 
-mv = st.number_input("הזן שווי שוק נוכחי במיליוני יורו", min_value=0.0, format="%.2f")
-if mv > 0:
-    future_value = round((ysp_score / 100) * 80, 2)
-    roi = round(future_value - mv, 2)
-    st.success(f"🔮 תחזית שווי עתידי: €{future_value}M")
-    st.info(f"📈 ROI חזוי: רווח של **€{roi}M** על ההשקעה")
+filtered = filtered[(filtered["Age"] <= age_max) &
+                    (filtered["xG"] >= xg_min) &
+                    (filtered["Succ"] >= dribble_min) &
+                    (filtered["KP"] >= keypass_min)]
 
-link = f"https://www.transfermarkt.com/schnellsuche/ergebnis/schnellsuche?query={selected_player.replace(' ', '+')}"
-st.markdown(f"🔗 [עמוד השחקן ב־Transfermarkt]({link})")
+# חישוב YSP + הזנת שווי שוק והצגת ROI
+st.markdown("---")
+st.subheader("תוצאות החיפוש")
+
+for i, row in filtered.iterrows():
+    name = row["Player"]
+    club = row["Club"]
+    pos = row["Pos"]
+    league = row["Comp"]
+    age = row["Age"]
+
+    ysp = calculate_ysp_score(row)
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown(f"**{name}** ({pos}) - {club}, גיל {age}, ליגה: {league}")
+        st.markdown(f"מדד YSP: **{ysp}**")
+
+        search_url = f"https://duckduckgo.com/?q={urllib.parse.quote(name + ' site:transfermarkt.com')}"
+        st.markdown(f"[🔗 עמוד Transfermarkt]( {search_url} )")
+
+    with col2:
+        market_value_input = st.text_input(f"שווי שוק במיליוני אירו ({name})", key=f"val_{i}")
+        if market_value_input:
+            try:
+                market_value = float(market_value_input.replace(",", ".")) * 1_000_000
+                predicted_value = ysp / 100 * 100_000_000  # חזוי לשיא הקריירה
+                roi = round((predicted_value - market_value) / market_value * 100, 2)
+                st.success(f"📈 ROI צפוי: {roi}% (שווי עתידי חזוי: €{predicted_value:,.0f})")
+                st.caption("ה־ROI מציין את אחוז הרווח המשוער אם תשקיע בשחקן כעת.")
+            except:
+                st.warning("⚠️ אנא הזן מספר תקין במיליוני אירו בלבד.")
