@@ -1,18 +1,17 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import os
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="FstarVfootball - חיפוש מתקדם YSP-75", layout="wide")
+st.set_page_config(page_title="FstarV Search Tool", layout="wide")
 
 @st.cache_data
 def load_players():
-    path = os.path.join("data", "players_simplified_2025_with_club.csv")
-    df = pd.read_csv(path)
-    df = df.dropna(subset=["Age", "Min", "Gls", "Ast", "Succ", "KP", "Tkl", "Int", "Clr", "Blocks", "Pos", "Comp"])
-    return df
+    return pd.read_csv("players_simplified_2025.csv")
 
+players = load_players()
+players.columns = players.columns.str.strip()
+
+# פונקציית חישוב YSP
 def calculate_ysp_score(row):
     position = str(row["Pos"])
     minutes = row["Min"]
@@ -101,60 +100,69 @@ def calculate_ysp_score(row):
     ysp_score *= league_weight
     return min(round(ysp_score, 2), 100)
 
-# UI
-st.title("🔬 מערכת חיפוש מתקדמת – YSP-75 + ROI + גרף")
-st.markdown("בחר סינונים מתקדמים למציאת שחקנים")
-
-age_limit = st.number_input("גיל מקסימלי", min_value=16, max_value=40, value=23)
-position = st.selectbox("עמדה", ["FW", "MF", "DF", "GK"])
-kp_min = st.slider("מסירות מפתח מינימלי", 0, 100, 10)
-dribbles_min = st.slider("דריבלים מוצלחים מינימלי", 0, 100, 10)
-contrib_min = st.slider("תרומה כוללת ל־90 (שערים + בישולים + 0.5×KP + 0.5×דריבלים)", 0.0, 3.0, 0.8, 0.1)
-
-players = load_players()
-
-players["Contribution90"] = ((players["Gls"] + players["Ast"] + players["KP"]*0.5 + players["Succ"]*0.5) / players["Min"]) * 90
+# חישוב YSP + תרומה ל־90 דקות
 players["YSP"] = players.apply(calculate_ysp_score, axis=1)
+players["Contribution90"] = ((players["Gls"] + players["Ast"] + players["Succ"] * 0.5 + players["KP"] * 0.5) / players["Min"]) * 90
 
-filtered = players[
-    (players["Age"] <= age_limit) &
-    (players["Pos"].str.contains(position)) &
-    (players["KP"] >= kp_min) &
-    (players["Succ"] >= dribbles_min) &
-    (players["Contribution90"] >= contrib_min)
-]
+# סינונים
+min_age = st.slider("גיל מינימלי", 16, 30, 16)
+position_filter = st.selectbox("בחר עמדה", ["All", "GK", "DF", "MF", "FW"])
+min_kp = st.slider("מסירות מפתח מינימליות", 0, 50, 0)
+min_dribbles = st.slider("דריבלים מוצלחים מינימליים", 0, 50, 0)
+min_contrib = st.slider("תרומה ל־90 דקות (xG+xA+KP) מינימלית", 0.0, 3.0, 0.0, step=0.1)
 
-st.markdown(f"### נמצאו {len(filtered)} שחקנים מתאימים")
+filtered = players[players["Age"] >= min_age]
+if position_filter != "All":
+    filtered = filtered[filtered["Pos"].str.contains(position_filter)]
+filtered = filtered[filtered["KP"] >= min_kp]
+filtered = filtered[filtered["Succ"] >= min_dribbles]
+filtered = filtered[filtered["Contribution90"] >= min_contrib]
 
+# תצוגה
+st.markdown("## תוצאות סינון שחקנים")
 roi_results = []
 
 for idx, row in filtered.iterrows():
-    col1, col2, col3 = st.columns([3, 2, 3])
+    col1, col2, col3 = st.columns([3, 3, 2])
     col1.markdown(f"**{row['Player']}** ({int(row['Age'])}) – {row['Pos']}")
-    
-    # 🔗 קישור לעמוד השחקן ב־Transfermarkt
+    col1.markdown(f"ליגה: {row['Comp']} | דקות: {int(row['Min'])}")
+    col1.markdown(f"גולים: {row['Gls']} | בישולים: {row['Ast']}")
+    col1.markdown(f"YSP: **{row['YSP']}** | תרומה ל־90: {round(row['Contribution90'],2)}")
+
+    # קישור ל־Transfermarkt
     search_query = f"{row['Player']} site:transfermarkt.com"
     search_url = f"https://duckduckgo.com/?q={search_query.replace(' ', '+')}"
     col1.markdown(f"[🔎 עמוד שחקן ב־Transfermarkt]({search_url})")
 
-    col2.markdown(f"YSP: `{row['YSP']}` | תרומה/90: `{row['Contribution90']:.2f}`")
-
-    market_input = st.text_input(f"שווי שוק נוכחי (€ - מלא, לדוגמה 5000000) עבור {row['Player']}", key=f"mv_{idx}")
+    market_input = col2.text_input("שווי שוק (במיליוני אירו)", key=f"mv_{idx}")
     if market_input:
         try:
-            market_clean = market_input.lower().replace("m", "000000").replace("מיליון", "000000").replace("€", "").replace(",", "").strip()
-            market_value = float(market_clean)
-            roi = (row['YSP'] / market_value) * 1_000_000
-            col3.success(f"ROI: {roi:.2f}")
-            roi_results.append((row['Player'], row['YSP'], row['Contribution90'], roi))
+            market_millions = float(market_input.strip())
+            if market_millions > 200:
+                col3.error("⛔ הזן ערך במיליוני אירו בלבד – לדוגמה 5")
+            else:
+                market_value = market_millions * 1_000_000
+                roi = (row['YSP'] / market_value) * 1_000_000
+
+                if roi > 15:
+                    col3.success("🟢 שחקן משתלם מאוד – ROI גבוה")
+                elif roi > 10:
+                    col3.info("🔵 משתלם – כדאי לבדוק")
+                elif roi > 5:
+                    col3.warning("🟠 שחקן במחיר סביר")
+                else:
+                    col3.error("🔴 יקר ביחס לפוטנציאל – ROI נמוך")
+
+                roi_results.append((row['Player'], row['YSP'], row['Contribution90'], roi))
         except:
-            col3.warning("הזן ערך מספרי תקין (למשל 8000000)")
+            col3.warning("⚠ הזן מספר חוקי בלבד – לדוגמה: 4.5")
 
+# גרף השוואה
 if roi_results:
-    st.markdown("### 📊 גרף השוואה בין שחקנים")
-    chart_df = pd.DataFrame(roi_results, columns=["Player", "YSP", "Contribution90", "ROI"])
-    st.bar_chart(chart_df.set_index("Player")[["YSP", "Contribution90", "ROI"]])
+    st.markdown("## 🔍 השוואה גרפית בין שחקנים")
+    df_plot = pd.DataFrame(roi_results, columns=["Player", "YSP", "Contribution90", "ROI"])
+    st.bar_chart(df_plot.set_index("Player")[["YSP", "Contribution90"]])
 
-if not filtered.empty:
-    csv_data = filtered[["Player", "Age", "Pos", "Comp", "Gls", "Ast", "Succ", "KP", "Contribution90", "YSP"]].copy()
-    st.download_button("📥 הורד CSV עם תוצאות", csv_data.to_csv(index=False).encode("utf-8"), file_name="filtered_players.csv", mime="text/csv")
+    # הורדה
+    csv = df_plot.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 הורד תוצאות כ־CSV", data=csv, file_name="filtered_players.csv", mime="text/csv")
