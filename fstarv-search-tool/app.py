@@ -2,17 +2,16 @@ import streamlit as st
 import pandas as pd
 import os
 
-st.set_page_config(page_title="FstarVfootball Search", layout="wide")
-st.title("🔍 FstarVfootball – חיפוש מתקדם לפי מדדי פוטנציאל")
+st.set_page_config(page_title="FstarVfootball ROI Tool", layout="wide")
+st.title("💹 מחשבון ROI לשחקנים – FstarVfootball")
 
 @st.cache_data
 def load_players():
-    path = os.path.join("data", "players_simplified_2025.csv")  # ודא שהקובץ קיים שם
+    path = os.path.join("data", "players_simplified_2025.csv")
     df = pd.read_csv(path)
     df.columns = df.columns.str.strip()
     return df
 
-# פונקציית חישוב מדד YSP
 def calculate_ysp_score(row):
     position = str(row["Pos"])
     minutes = row["Min"]
@@ -101,53 +100,21 @@ def calculate_ysp_score(row):
     ysp_score *= league_weight
     return min(round(ysp_score, 2), 100)
 
-# UI: סינון מתקדם
 df = load_players()
-position_filter = st.selectbox("בחר עמדה", options=["FW", "MF", "DF", "GK"])
-filtered_df = df[df["Pos"].str.contains(position_filter)]
+player_names = df["Player"].unique()
+selected_player = st.selectbox("בחר שחקן לחישוב ROI", player_names)
 
-age_limit = st.slider("סינון גיל מירבי", 16, 28, 22)
-xg_min = st.slider("סינון xG מינימלי", 0.0, 15.0, 1.0)
-kp_min = st.slider("סינון מסירות מפתח", 0, 100, 10)
-dribbles_min = st.slider("סינון דריבלים מוצלחים", 0, 100, 10)
+player_data = df[df["Player"] == selected_player].iloc[0]
+ysp_score = calculate_ysp_score(player_data)
 
-filtered_df = filtered_df[
-    (filtered_df["Age"] <= age_limit) &
-    (filtered_df["xG"] >= xg_min) &
-    (filtered_df["KP"] >= kp_min) &
-    (filtered_df["Succ"] >= dribbles_min)
-]
+st.write(f"**מדד YSP לשחקן {selected_player}**: {ysp_score}")
 
-# הזנת שווי שוק ידני
-market_value = st.number_input("הזן שווי שוק נוכחי של שחקן במיליוני יורו", min_value=0.0, format="%.2f")
-st.caption("📌 הזן שווי שוק נוכחי כדי לחשב ROI עתידי. הקלט במיליונים בלבד.")
+mv = st.number_input("הזן שווי שוק נוכחי במיליוני יורו", min_value=0.0, format="%.2f")
+if mv > 0:
+    future_value = round((ysp_score / 100) * 80, 2)
+    roi = round(future_value - mv, 2)
+    st.success(f"🔮 תחזית שווי עתידי: €{future_value}M")
+    st.info(f"📈 ROI חזוי: רווח של **€{roi}M** על ההשקעה")
 
-# חישוב תוצאה לכל שחקן
-filtered_df["YSP-75"] = filtered_df.apply(calculate_ysp_score, axis=1)
-if market_value > 0:
-    filtered_df["Market Value (€M)"] = market_value
-    filtered_df["Expected Future Value (€M)"] = filtered_df["YSP-75"].apply(lambda x: round(x / 100 * 80, 2))
-    filtered_df["ROI (פי רווח עתידי)"] = (filtered_df["Expected Future Value (€M)"] - market_value).round(2)
-else:
-    filtered_df["Expected Future Value (€M)"] = "לא חושב"
-    filtered_df["ROI (פי רווח עתידי)"] = "אין שווי שוק"
-
-# קישור טרנספרמרקט אוטומטי
-def generate_transfermarkt_link(player_name):
-    query = player_name.replace(" ", "+")
-    return f"https://www.transfermarkt.com/schnellsuche/ergebnis/schnellsuche?query={query}"
-
-filtered_df["Transfermarkt"] = filtered_df["Player"].apply(
-    lambda name: f"[עמוד שחקן](https://www.transfermarkt.com/schnellsuche/ergebnis/schnellsuche?query={name.replace(' ', '+')})"
-)
-
-# הצגת התוצאות
-st.markdown("### תוצאות מסוננות")
-st.dataframe(
-    filtered_df[[
-        "Player", "Age", "Pos", "Comp", "Min", "Gls", "Ast",
-        "xG", "Succ", "KP", "YSP-75",
-        "Expected Future Value (€M)", "ROI (פי רווח עתידי)", "Transfermarkt"
-    ]],
-    use_container_width=True
-)
+link = f"https://www.transfermarkt.com/schnellsuche/ergebnis/schnellsuche?query={selected_player.replace(' ', '+')}"
+st.markdown(f"🔗 [עמוד השחקן ב־Transfermarkt]({link})")
