@@ -1,17 +1,16 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import os
 import urllib.parse
 
-st.set_page_config(page_title="FstarVfootball - ROI חכם", layout="wide")
+st.set_page_config(page_title="FstarV Search Tool", layout="wide")
+st.title("🔍 FstarVfootball - חיפוש שחקנים מתקדם")
 
-# ----- טען נתונים -----
 @st.cache_data
 def load_players():
     path = os.path.join("data", "players_simplified_2025.csv")
-    df = pd.read_csv(path)
-    df.columns = df.columns.str.strip()
-    return df
+    return pd.read_csv(path)
 
 def calculate_ysp_score(row):
     position = str(row["Pos"])
@@ -47,9 +46,9 @@ def calculate_ysp_score(row):
         bm = benchmarks["GK"]
         ysp_score = (
             (minutes / bm["Min"]) * 40 +
-            (clearances / bm["Clr"]) * 20 +
+            (clearances / bm["Clr"]) * 30 +
             (tackles / bm["Tkl"]) * 20 +
-            (blocks / bm["Blocks"]) * 20
+            (blocks / bm["Blocks"]) * 10
         )
     elif "DF" in position:
         bm = benchmarks["DF"]
@@ -101,56 +100,49 @@ def calculate_ysp_score(row):
     ysp_score *= league_weight
     return min(round(ysp_score, 2), 100)
 
-# ----- ממשק -----
-st.title("🔍 חיפוש מתקדם לשחקני כדורגל + ROI")
+@st.cache_data
+def generate_transfermarkt_link(name):
+    query = urllib.parse.quote(f"{name} site:transfermarkt.com")
+    return f"https://duckduckgo.com/?q={query}"
+
 players = load_players()
+players["YSP"] = players.apply(calculate_ysp_score, axis=1)
 
-# אפשרות סינון לפי גיל, xG, עמדה וכו'
-st.sidebar.header("סינון מתקדם")
-position_filter = st.sidebar.selectbox("בחר עמדה", options=["ALL"] + sorted(players["Pos"].unique()))
-age_max = st.sidebar.slider("גיל מרבי", 16, 28, 23)
-xg_min = st.sidebar.slider("מינימום xG", 0.0, 10.0, 3.0, step=0.1)
-dribble_min = st.sidebar.slider("מינימום דריבלים", 0, 100, 20)
-keypass_min = st.sidebar.slider("מינימום מסירות מפתח", 0, 100, 20)
+positions = sorted(players["Pos"].dropna().unique())
+selected_position = st.selectbox("בחר עמדה", positions)
+filtered = players[players["Pos"] == selected_position]
 
-filtered = players.copy()
-if position_filter != "ALL":
-    filtered = filtered[filtered["Pos"] == position_filter]
+if selected_position == "GK":
+    clr_range = st.slider("📊 סינון: הרחקות (Clr)", 0, 100, (0, 100))
+    tkl_range = st.slider("📊 תיקולים (Tkl)", 0, 50, (0, 50))
+    filtered = filtered[(filtered["Clr"] >= clr_range[0]) & (filtered["Clr"] <= clr_range[1]) &
+                         (filtered["Tkl"] >= tkl_range[0]) & (filtered["Tkl"] <= tkl_range[1])]
+elif selected_position == "DF":
+    int_range = st.slider("📊 חטיפות (Int)", 0, 100, (0, 100))
+    clr_range = st.slider("📊 הרחקות (Clr)", 0, 150, (0, 150))
+    filtered = filtered[(filtered["Int"] >= int_range[0]) & (filtered["Int"] <= int_range[1]) &
+                         (filtered["Clr"] >= clr_range[0]) & (filtered["Clr"] <= clr_range[1])]
+elif selected_position == "MF":
+    kp_range = st.slider("📊 מסירות מפתח (KP)", 0, 100, (0, 100))
+    succ_range = st.slider("📊 דריבלים מוצלחים (Succ)", 0, 100, (0, 100))
+    filtered = filtered[(filtered["KP"] >= kp_range[0]) & (filtered["KP"] <= kp_range[1]) &
+                         (filtered["Succ"] >= succ_range[0]) & (filtered["Succ"] <= succ_range[1])]
+elif selected_position == "FW":
+    gls_range = st.slider("📊 שערים (Gls)", 0, 30, (0, 30))
+    ast_range = st.slider("📊 בישולים (Ast)", 0, 20, (0, 20))
+    filtered = filtered[(filtered["Gls"] >= gls_range[0]) & (filtered["Gls"] <= gls_range[1]) &
+                         (filtered["Ast"] >= ast_range[0]) & (filtered["Ast"] <= ast_range[1])]
 
-filtered = filtered[(filtered["Age"] <= age_max) &
-                    (filtered["xG"] >= xg_min) &
-                    (filtered["Succ"] >= dribble_min) &
-                    (filtered["KP"] >= keypass_min)]
+for idx, row in filtered.iterrows():
+    st.markdown(f"**{row['Player']}** | גיל: {row['Age']} | עמדה: {row['Pos']} | דקות: {row['Min']}")
+    st.markdown(f"✳️ מדד YSP: {row['YSP']}")
+    link = generate_transfermarkt_link(row["Player"])
+    st.markdown(f"🔗 [עמוד Transfermarkt של {row['Player']}]({link})")
 
-# חישוב YSP + הזנת שווי שוק והצגת ROI
-st.markdown("---")
-st.subheader("תוצאות החיפוש")
+    market_value = st.number_input(f"💶 הזן שווי שוק נוכחי ב-מיליון אירו עבור {row['Player']}", min_value=0.0, step=0.1, format="%.2f")
+    if market_value > 0:
+        future_value = (row["YSP"] / 100) * 100
+        roi = ((future_value - market_value) / market_value) * 100
+        st.markdown(f"📈 ROI: {roi:.2f}% — החזר צפוי לפי פוטנציאל לעומת שווי נוכחי")
 
-for i, row in filtered.iterrows():
-    name = row["Player"]
-    club = row["Club"]
-    pos = row["Pos"]
-    league = row["Comp"]
-    age = row["Age"]
-
-    ysp = calculate_ysp_score(row)
-
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.markdown(f"**{name}** ({pos}) - {club}, גיל {age}, ליגה: {league}")
-        st.markdown(f"מדד YSP: **{ysp}**")
-
-        search_url = f"https://duckduckgo.com/?q={urllib.parse.quote(name + ' site:transfermarkt.com')}"
-        st.markdown(f"[🔗 עמוד Transfermarkt]( {search_url} )")
-
-    with col2:
-        market_value_input = st.text_input(f"שווי שוק במיליוני אירו ({name})", key=f"val_{i}")
-        if market_value_input:
-            try:
-                market_value = float(market_value_input.replace(",", ".")) * 1_000_000
-                predicted_value = ysp / 100 * 100_000_000  # חזוי לשיא הקריירה
-                roi = round((predicted_value - market_value) / market_value * 100, 2)
-                st.success(f"📈 ROI צפוי: {roi}% (שווי עתידי חזוי: €{predicted_value:,.0f})")
-                st.caption("ה־ROI מציין את אחוז הרווח המשוער אם תשקיע בשחקן כעת.")
-            except:
-                st.warning("⚠️ אנא הזן מספר תקין במיליוני אירו בלבד.")
+    st.markdown("---")
