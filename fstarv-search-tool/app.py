@@ -7,6 +7,15 @@ import urllib.parse
 st.set_page_config(page_title="FstarV Search Tool", layout="wide")
 st.title("🔍 FstarVfootball - חיפוש שחקנים מתקדם")
 
+# --- כפתור חזרה בדף הצד ---
+with st.sidebar:
+    st.markdown(
+        "<a href='https://vysp-ysp75-app.streamlit.app/' target='_blank'>"
+        "<button style='width:100%;background-color:#2259b4;color:#fff;padding:8px 20px;border-radius:6px;border:none;font-size:17px;cursor:pointer;margin-bottom:10px;'>⬅ חזרה לדף הראשי</button>"
+        "</a>",
+        unsafe_allow_html=True
+    )
+
 @st.cache_data
 def load_players():
     path = os.path.join("data", "players_simplified_2025.csv")
@@ -158,3 +167,13 @@ for idx, row in filtered.iterrows():
         st.markdown(f"📈 ROI: {roi_text}")
 
     st.markdown("---")
+
+# --- כפתור חזרה בתחתית הדף ---
+st.markdown(
+    "<div style='text-align:right;margin-top:24px'>"
+    "<a href='https://vysp-ysp75-app.streamlit.app/' target='_blank'>"
+    "<button style='background-color:#2259b4;color:#fff;padding:8px 20px;border-radius:6px;border:none;font-size:17px;cursor:pointer;'>⬅ חזרה לדף הראשי</button>"
+    "</a>"
+    "</div>",
+    unsafe_allow_html=True
+)
