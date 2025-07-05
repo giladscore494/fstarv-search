@@ -10,7 +10,7 @@ st.title("🔍 FstarVfootball - חיפוש שחקנים מתקדם")
 # --- כפתור חזרה בדף הצד ---
 with st.sidebar:
     st.markdown(
-        "<a href='https://vysp-ysp75-app.streamlit.app/' target='_blank'>"
+        "<a href='https://4bfgeiwnaw4mcdhfyvyd87.streamlit.app/' target='_blank'>"
         "<button style='width:100%;background-color:#2259b4;color:#fff;padding:8px 20px;border-radius:6px;border:none;font-size:17px;cursor:pointer;margin-bottom:10px;'>⬅ חזרה לדף הראשי</button>"
         "</a>",
         unsafe_allow_html=True
@@ -171,7 +171,7 @@ for idx, row in filtered.iterrows():
 # --- כפתור חזרה בתחתית הדף ---
 st.markdown(
     "<div style='text-align:right;margin-top:24px'>"
-    "<a href='https://vysp-ysp75-app.streamlit.app/' target='_blank'>"
+    "<a href='https://4bfgeiwnaw4mcdhfyvyd87.streamlit.app/' target='_blank'>"
     "<button style='background-color:#2259b4;color:#fff;padding:8px 20px;border-radius:6px;border:none;font-size:17px;cursor:pointer;'>⬅ חזרה לדף הראשי</button>"
     "</a>"
     "</div>",
