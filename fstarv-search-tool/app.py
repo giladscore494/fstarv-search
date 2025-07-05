@@ -1,14 +1,18 @@
 import streamlit as st
 import pandas as pd
 import os
-import matplotlib.pyplot as plt
 
-# פונקציית חישוב קישור ל-Transfermarkt
-def generate_transfermarkt_link(player_name):
-    player_name_encoded = player_name.replace(" ", "+")
-    return f"https://www.google.com/search?q={player_name_encoded}+site:transfermarkt.com"
+st.set_page_config(page_title="FstarVfootball - חיפוש מתקדם", layout="wide")
 
-# פונקציית חישוב YSP
+# פונקציה לטעינת נתונים
+@st.cache_data
+def load_players():
+    path = os.path.join("/mnt/data", "players_simplified_2025 (5).csv")
+    df = pd.read_csv(path)
+    df.columns = df.columns.str.strip()
+    return df
+
+# פונקציית חישוב מדד YSP-75
 def calculate_ysp_score(row):
     position = str(row["Pos"])
     minutes = row["Min"]
@@ -97,37 +101,55 @@ def calculate_ysp_score(row):
     ysp_score *= league_weight
     return min(round(ysp_score, 2), 100)
 
-# טעינת נתונים
-@st.cache_data
-def load_players():
-    path = os.path.join("data", "players_simplified_2025.csv")
-    return pd.read_csv(path)
+def generate_transfermarkt_link(player_name):
+    player_name_encoded = player_name.replace(" ", "+")
+    return f"https://www.google.com/search?q={player_name_encoded}+site:transfermarkt.com"
 
-# ממשק
-st.set_page_config("FstarVfootball - Search Tool", layout="wide")
-st.title("🔍 חיפוש שחקנים - מדד YSP עם שווי שוק")
+# UI
+st.title("🔍 חיפוש מתקדם לפי מדד YSP-75")
 
-players = load_players()
-player_names = players["Player"].sort_values().unique()
-selected_name = st.selectbox("בחר שחקן", player_names)
+players_df = load_players()
 
-selected_row = players[players["Player"] == selected_name].iloc[0]
-ysp_score = calculate_ysp_score(selected_row)
+# סינון
+positions = players_df["Pos"].dropna().unique().tolist()
+selected_position = st.selectbox("בחר עמדה", ["All"] + sorted(positions))
 
-st.markdown(f"### 🧠 מדד YSP: `{ysp_score}`")
+age_limit = st.slider("סנן לפי גיל מקסימלי", 16, 30, 23)
+min_xg = st.slider("xG מינימלי", 0.0, 15.0, 0.0)
+min_kp = st.slider("מסירות מפתח מינימליות", 0, 50, 0)
+min_dribbles = st.slider("דריבלים מוצלחים מינימליים", 0, 50, 0)
 
-# הזנת שווי שוק (במיליונים)
-market_value_mil = st.number_input("הזן שווי שוק נוכחי של השחקן (במיליוני אירו)", min_value=0.0, step=0.5)
+# הזנת שווי שוק
+user_market_value = st.number_input("הזן שווי שוק נוכחי של שחקנים במיליוני אירו", min_value=0.0, step=0.1)
 
-if market_value_mil > 0:
-    predicted_future_value = min((ysp_score / 100) * market_value_mil * 2.3, market_value_mil * 4)
-    roi = predicted_future_value - market_value_mil
-    st.success(f"📈 תחזית שווי עתידי: €{predicted_future_value:.1f}M")
-    st.info(f"💡 ROI צפוי (רווח פוטנציאלי): €{roi:.1f}M — מבוסס על הביצועים ומדד הפוטנציאל")
-else:
-    st.warning("הזן שווי שוק נוכחי כדי לחשב תחזית עתידית ו־ROI")
+filtered = players_df.copy()
+filtered = filtered[filtered["Age"] <= age_limit]
+filtered = filtered[filtered["xG"] >= min_xg]
+filtered = filtered[filtered["KP"] >= min_kp]
+filtered = filtered[filtered["Succ"] >= min_dribbles]
+if selected_position != "All":
+    filtered = filtered[filtered["Pos"].str.contains(selected_position)]
 
-# פרטי השחקן + קישור
+# חישוב מדד לכל שחקן
+filtered["YSP"] = filtered.apply(calculate_ysp_score, axis=1)
+
+# ROI - תחזית רווח
+if user_market_value > 0:
+    filtered["ROI (€ לעתיד)"] = ((filtered["YSP"] / 100) * 50_000_000) - (user_market_value * 1_000_000)
+    st.markdown("🔁 **ROI (החזר צפוי לעומת שווי נוכחי):** מבוסס על שווי עתידי פוטנציאלי של עד €50M")
+
+# תוצאה
+st.markdown("### תוצאות החיפוש:")
+
+for _, row in filtered.sort_values(by="YSP", ascending=False).iterrows():
+    st.markdown(f"**{row['Player']}** | גיל: {row['Age']} | ליגה: {row['Comp']} | עמדה: {row['Pos']}")
+    st.write(f"YSP-75: {row['YSP']}")
+    if user_market_value > 0:
+        st.write(f"תחזית ROI: €{int(row['ROI (€ לעתיד)']):,}")
+    link = generate_transfermarkt_link(row["Player"])
+    st.markdown(f"[🔗 עמוד ב־Transfermarkt]({link})", unsafe_allow_html=True)
+    st.markdown("---")
+
 st.markdown(f"**ליגה**: {selected_row['Comp']} | **גיל**: {selected_row['Age']} | **עמדה**: {selected_row['Pos']}")
 link = generate_transfermarkt_link(selected_row["Player"])
 st.markdown(f"🔎 [עמוד השחקן ב־Transfermarkt]({link})", unsafe_allow_html=True)
