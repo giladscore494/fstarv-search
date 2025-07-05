@@ -131,6 +131,12 @@ roi_results = []
 for idx, row in filtered.iterrows():
     col1, col2, col3 = st.columns([3, 2, 3])
     col1.markdown(f"**{row['Player']}** ({int(row['Age'])}) – {row['Pos']}")
+    
+    # 🔗 קישור לעמוד השחקן ב־Transfermarkt
+    search_query = f"{row['Player']} site:transfermarkt.com"
+    search_url = f"https://duckduckgo.com/?q={search_query.replace(' ', '+')}"
+    col1.markdown(f"[🔎 עמוד שחקן ב־Transfermarkt]({search_url})")
+
     col2.markdown(f"YSP: `{row['YSP']}` | תרומה/90: `{row['Contribution90']:.2f}`")
 
     market_input = st.text_input(f"שווי שוק נוכחי (€ - מלא, לדוגמה 5000000) עבור {row['Player']}", key=f"mv_{idx}")
